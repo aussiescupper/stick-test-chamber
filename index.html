@@ -2022,12 +2022,15 @@ document.getElementById('btnAdd').addEventListener('click', ()=> spawnStick(rnd(
 /* ============================================================
    LOOP
    ============================================================ */
+let measW = 0, measH = 0;
 function resize(){
   let box = cv.getBoundingClientRect();
   if(!(box.width>0) || !(box.height>0)) box = document.getElementById('stage').getBoundingClientRect();
   DPR = Math.min(2, window.devicePixelRatio||1);
-  W = Math.max(320, Math.round(box.width));
-  H = Math.max(260, Math.round(box.height));
+  measW = Math.round(box.width); measH = Math.round(box.height);
+  const nW = Math.max(320, measW), nH = Math.max(260, measH);
+  if(nW===W && nH===H && cv.width===Math.round(nW*DPR)) return;
+  W = nW; H = nH;
   GROUND = H - 54;
   cv.width = W*DPR; cv.height = H*DPR;
   const old = document.createElement('canvas');
@@ -2051,7 +2054,7 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(resize).cat
 /* backstop: if the canvas box ever drifts from the world size, re-measure */
 function ensureSize(){
   const w=Math.round(cv.clientWidth), h=Math.round(cv.clientHeight);
-  if(w>0 && h>0 && (w!==W || h!==H)) resize();
+  if(w>0 && h>0 && (w!==measW || h!==measH)) resize();
 }
 /* reveal the panel again if a narrow viewport grows into a wide one */
 let wasNarrow = window.innerWidth < 900;
