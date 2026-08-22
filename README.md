@@ -1,5 +1,7 @@
 # Stick Test Chamber
 
+`v1.2.0`
+
 A ragdoll physics sandbox that runs entirely in the browser — no build step, no
 dependencies, one self-contained HTML file.
 
@@ -34,3 +36,7 @@ debris or stains.
 | `V` | Clear the whole room |
 | `X` | Heal everyone |
 | `Q` | Show / hide the item list |
+
+Sound is off by default — turn it on in the **Settings** tab, where there is also
+a volume slider. Browsers only allow audio to start after you interact with the
+page, so switch it on with the toggle rather than expecting sound on load.

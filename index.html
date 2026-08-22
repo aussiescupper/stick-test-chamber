@@ -43,6 +43,7 @@ button,input,select{font:inherit;color:inherit}
 .mark{width:30px;height:30px;flex:none;border:1px solid var(--amber);background:var(--stripe);opacity:.92}
 .brand h1{margin:0;font-family:var(--ui);font-weight:700;font-size:15px;letter-spacing:.09em;text-transform:uppercase;line-height:1.1;text-wrap:balance}
 .brand p{margin:2px 0 0;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.brand p #ver{color:var(--amber);letter-spacing:.06em}
 .tabs{display:flex;gap:2px}
 .tab{flex:1;appearance:none;background:transparent;border:0;border-bottom:2px solid transparent;padding:9px 2px 8px;font-family:var(--ui);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);cursor:pointer;white-space:nowrap}
 .tab:hover{color:var(--dim)}
@@ -151,7 +152,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:2px solid var(
         <span class="mark"></span>
         <div>
           <h1>Stick Test Chamber</h1>
-          <p>Ragdoll physics sandbox</p>
+          <p>Ragdoll physics sandbox <span id="ver"></span></p>
         </div>
       </div>
       <div class="tabs" role="tablist">
@@ -228,7 +229,8 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:2px solid var(
       <div class="cat">Presentation</div>
       <div class="slide"><div class="top"><span class="lbl">Particle budget</span><span class="val" id="vParts">1400</span></div><input type="range" id="rParts" min="100" max="4000" step="100" value="1400"></div>
       <div class="row"><span class="lbl">Screen shake</span><button class="sw" role="switch" data-set="shake" aria-checked="true"></button></div>
-      <div class="row"><span class="lbl">Sound</span><button class="sw" role="switch" data-set="sound" aria-checked="false"></button></div>
+      <div class="row"><span class="lbl">Sound<span class="sub">Impacts, blades, gunfire and explosions</span></span><button class="sw" role="switch" data-set="sound" aria-checked="false"></button></div>
+      <div class="slide"><div class="top"><span class="lbl">Volume</span><span class="val" id="vVol">55%</span></div><input type="range" id="rVol" min="0" max="100" value="55"></div>
       <div class="row"><span class="lbl">Show physics points<span class="sub">Draw the underlying particle rig</span></span><button class="sw" role="switch" data-set="debug" aria-checked="false"></button></div>
 
       <p class="note dim">Clearing the room, healing figures and tidying the floor all live in the Clean&#8209;up tab.</p>
@@ -259,6 +261,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:2px solid var(
    STICK TEST CHAMBER &mdash; position based dynamics sandbox
    ============================================================ */
 
+const VERSION = '1.2.0';
 const cv  = document.getElementById('game');
 const ctx = cv.getContext('2d');
 const decal = document.createElement('canvas');
@@ -270,7 +273,7 @@ const S = {
   blood:true, stains:true, gore:true, ai:true,
   wounds:true, gibs:true, bleeding:true, bloodAmt:1, stainAmt:1, tough:1,
   gravity:1.0, timeScale:1, wind:0,
-  maxParts:1400, shake:true, sound:false, debug:false,
+  maxParts:1400, shake:true, sound:false, volume:0.55, debug:false,
   autoClear:false, fadeStains:false, cull:true,
   paused:false, slow:false
 };
@@ -590,58 +593,98 @@ function explode(x,y,radius,power,dmg,opts){
 let flashV = 0;
 function flash(v){ flashV = Math.max(flashV, v); }
 
-/* ---------- audio ---------- */
-let AC = null;
-function ac(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=false; } } return AC; }
-let lastSfx = 0;
+/* ---------- audio ----------
+   One master chain through a compressor so overlapping hits cannot pile up into
+   a drone, every voice torn down when it ends, and per-kind rate limiting. */
+let AC = null, MASTER = null;
+function ac(){
+  if(AC === null){
+    try{
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      AC = new Ctx();
+      MASTER = AC.createGain();
+      MASTER.gain.value = S.volume;
+      const comp = AC.createDynamicsCompressor();
+      comp.threshold.value = -20; comp.knee.value = 14; comp.ratio.value = 14;
+      comp.attack.value = 0.003; comp.release.value = 0.2;
+      MASTER.connect(comp); comp.connect(AC.destination);
+    }catch(e){ AC = false; }
+  }
+  if(AC && AC.state === 'suspended') AC.resume().catch(()=>{});
+  return AC;
+}
+function setVolume(v){ S.volume = v; if(MASTER) MASTER.gain.value = v; }
+
+const SFX_GAP = {thud:52, slice:70, boom:60, shot:34, die:140, zap:90};
+const sfxAt = {};
+let voices = 0;
+
+function env(a, now, attack, dur, peak){
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), now + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  g.connect(MASTER);
+  return g;
+}
+function tone(a, now, type, f0, f1, dur, peak){
+  const o = a.createOscillator();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, now);
+  o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), now + dur);
+  const g = env(a, now, 0.005, dur, peak);
+  o.connect(g);
+  o.start(now); o.stop(now + dur + 0.02);
+  voices++;
+  o.onended = ()=>{ voices--; try{ o.disconnect(); g.disconnect(); }catch(e){} };
+}
+function hiss(a, now, dur, peak, cut0, cut1, q){
+  const len = Math.max(1, Math.floor(a.sampleRate * dur));
+  const buf = a.createBuffer(1, len, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i] = (Math.random()*2-1) * (1 - i/len);
+  const src = a.createBufferSource(); src.buffer = buf;
+  const f = a.createBiquadFilter();
+  f.type = q ? 'bandpass' : 'lowpass';
+  if(q) f.Q.value = q;
+  f.frequency.setValueAtTime(cut0, now);
+  f.frequency.exponentialRampToValueAtTime(Math.max(60, cut1), now + dur);
+  const g = env(a, now, 0.004, dur, peak);
+  src.connect(f); f.connect(g);
+  src.start(now); src.stop(now + dur);
+  voices++;
+  src.onended = ()=>{ voices--; try{ src.disconnect(); f.disconnect(); g.disconnect(); }catch(e){} };
+}
+
 function sfx(kind, vol){
   if(!S.sound) return;
-  const a = ac(); if(!a) return;
-  const now = a.currentTime;
-  if(now - lastSfx < 0.018) return;
-  lastSfx = now;
-  vol = clamp(vol||.4, .02, 1) * .35;
-  const g = a.createGain(); g.connect(a.destination);
-  if(kind==='boom'){
-    const o=a.createOscillator(); o.type='sine';
-    o.frequency.setValueAtTime(160,now); o.frequency.exponentialRampToValueAtTime(24,now+.5);
-    g.gain.setValueAtTime(vol,now); g.gain.exponentialRampToValueAtTime(.0001,now+.55);
-    o.connect(g); o.start(now); o.stop(now+.6);
-    noise(a,g,now,.28,vol*.8,900);
-  } else if(kind==='thud'){
-    const o=a.createOscillator(); o.type='triangle';
-    o.frequency.setValueAtTime(rnd(90,150),now); o.frequency.exponentialRampToValueAtTime(40,now+.12);
-    g.gain.setValueAtTime(vol,now); g.gain.exponentialRampToValueAtTime(.0001,now+.15);
-    o.connect(g); o.start(now); o.stop(now+.17);
-  } else if(kind==='slice'){
-    noise(a,g,now,.1,vol*.9,2600);
-    g.gain.setValueAtTime(vol,now); g.gain.exponentialRampToValueAtTime(.0001,now+.12);
-  } else if(kind==='shot'){
-    noise(a,g,now,.07,vol,1800);
-    g.gain.setValueAtTime(vol,now); g.gain.exponentialRampToValueAtTime(.0001,now+.09);
-  } else if(kind==='die'){
-    const o=a.createOscillator(); o.type='square';
-    o.frequency.setValueAtTime(320,now); o.frequency.exponentialRampToValueAtTime(70,now+.3);
-    g.gain.setValueAtTime(vol*.5,now); g.gain.exponentialRampToValueAtTime(.0001,now+.32);
-    o.connect(g); o.start(now); o.stop(now+.34);
-  } else if(kind==='zap'){
-    const o=a.createOscillator(); o.type='sawtooth';
-    o.frequency.setValueAtTime(1400,now); o.frequency.exponentialRampToValueAtTime(300,now+.08);
-    g.gain.setValueAtTime(vol*.35,now); g.gain.exponentialRampToValueAtTime(.0001,now+.1);
-    o.connect(g); o.start(now); o.stop(now+.11);
+  const a = ac();
+  if(!a || a.state !== 'running') return;
+  const t = performance.now();
+  const gap = SFX_GAP[kind] || 45;
+  if(sfxAt[kind] && t - sfxAt[kind] < gap) return;
+  sfxAt[kind] = t;
+  if(voices > 24) return;
+  const now = a.currentTime + 0.001;
+  const v = clamp(vol === undefined ? 0.5 : vol, 0.05, 1);
+  if(kind === 'thud'){
+    tone(a, now, 'sine', rnd(120,170), 44, 0.13, 0.55*v);
+    hiss(a, now, 0.05, 0.18*v, 1400, 300);
+  } else if(kind === 'boom'){
+    tone(a, now, 'sine', 150, 26, 0.5, 0.7*v);
+    hiss(a, now, 0.34, 0.5*v, 1600, 160);
+  } else if(kind === 'slice'){
+    hiss(a, now, 0.09, 0.4*v, 4200, 900, 1.4);
+  } else if(kind === 'shot'){
+    hiss(a, now, 0.055, 0.45*v, 3200, 500);
+    tone(a, now, 'square', 320, 90, 0.05, 0.2*v);
+  } else if(kind === 'die'){
+    tone(a, now, 'square', 300, 66, 0.28, 0.22*v);
+  } else if(kind === 'zap'){
+    tone(a, now, 'sawtooth', 1500, 260, 0.09, 0.2*v);
+  } else if(kind === 'blip'){
+    tone(a, now, 'triangle', 660, 880, 0.09, 0.3);
   }
-}
-function noise(a,g,now,dur,vol,cut){
-  const len = Math.max(1,Math.floor(a.sampleRate*dur));
-  const buf = a.createBuffer(1,len,a.sampleRate);
-  const d = buf.getChannelData(0);
-  for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
-  const src = a.createBufferSource(); src.buffer = buf;
-  const f = a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=cut;
-  const ng = a.createGain(); ng.gain.value = vol;
-  src.connect(f); f.connect(ng); ng.connect(g.gain ? g : a.destination);
-  ng.connect(a.destination);
-  src.start(now); src.stop(now+dur);
 }
 
 /* ============================================================
@@ -1923,7 +1966,7 @@ document.querySelectorAll('.sw').forEach(el=>{
   el.addEventListener('click', ()=>{
     const k=el.dataset.set;
     S[k]=!S[k];
-    if(k==='sound' && S.sound) ac();
+    if(k==='sound' && S.sound){ ac(); setVolume(S.volume); sfx('blip',1); }
     if(k==='blood' && !S.blood) wipeStains();
     syncSwitches();
   });
@@ -1953,6 +1996,7 @@ slider('rGrav','vGrav', n=>{ S.gravity=n/100; return (n/100).toFixed(2)+'\u00d7'
 slider('rTime','vTime', n=>{ S.timeScale=n/100; return (n/100).toFixed(2)+'\u00d7'; });
 slider('rWind','vWind', n=>{ S.wind=n; return (n>0?'+':'')+n; });
 slider('rParts','vParts', n=>{ S.maxParts=n; return String(n); });
+slider('rVol','vVol', n=>{ setVolume(n/100); return n+'%'; });
 slider('rBlood','vBlood', n=>{ S.bloodAmt=n/100; return (n/100).toFixed(1)+'\u00d7'; });
 slider('rStain','vStain', n=>{ S.stainAmt=n/100; return (n/100).toFixed(1)+'\u00d7'; });
 slider('rTough','vTough', n=>{ S.tough=n/100; return (n/100).toFixed(1)+'\u00d7'; });
@@ -2111,10 +2155,13 @@ function updateStatus(){
     '<span><span class="k">OBJECTS</span> <b>'+items+'</b></span>'+
     '<span><span class="k">PARTICLES</span> <b>'+PARTS.length+'</b></span>'+
     (S.paused?'<span style="color:#ffb324">PAUSED</span>':'')+
-    (S.slow?'<span style="color:#3fd0c9">SLOW-MO</span>':'');
+    (S.slow?'<span style="color:#3fd0c9">SLOW-MO</span>':'')+
+    '<span class="k">v'+VERSION+'</span>';
 }
 
 /* ---------- boot ---------- */
+const verEl = document.getElementById('ver');
+if(verEl) verEl.textContent = 'v' + VERSION;
 buildIcons();
 buildPalette();
 buildTools();
