@@ -1,5 +1,15 @@
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Stick Test Chamber</title>
+<meta name="theme-color" content="#0f1218">
+<meta name="description" content="A ragdoll physics sandbox: spawn anything, use it on the stick figures, and turn the gore off whenever you like.">
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stick Chamber">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -25,7 +35,10 @@
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;padding:0;overflow:hidden;background:var(--void);}
+html,body{height:100%;margin:0;padding:0;overflow:hidden;background:var(--void);
+  overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;}
+button{touch-action:manipulation}
 body{font-family:var(--body);color:var(--chalk);-webkit-font-smoothing:antialiased;}
 button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
@@ -105,7 +118,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:2px solid var(
 /* ---------- STAGE ---------- */
 #stage{position:relative;min-width:0;overflow:hidden}
 #game{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
-#tools{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:5px;background:#161b24e6;border:1px solid var(--line);border-radius:3px;backdrop-filter:blur(6px);z-index:3}
+#tools{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:5px;background:#161b24e6;border:1px solid var(--line);border-radius:3px;backdrop-filter:blur(6px);z-index:3}
 .tool{position:relative;width:42px;height:42px;display:grid;place-items:center;background:transparent;border:1px solid transparent;border-radius:2px;cursor:pointer;color:var(--dim);transition:.12s}
 .tool:hover{background:var(--raise);color:var(--chalk)}
 .tool.on{background:#2b2415;border-color:var(--amber);color:var(--amber)}
@@ -115,31 +128,31 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:2px solid var(
 .tip{position:absolute;top:48px;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--deep);border:1px solid var(--line);padding:3px 7px;font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:var(--chalk);opacity:0;pointer-events:none;transition:opacity .12s}
 .tool:hover .tip{opacity:1}
 
-#btnPanel{position:absolute;top:12px;left:12px;width:34px;height:34px;display:grid;place-items:center;background:#161b24e6;border:1px solid var(--line);border-radius:2px;color:var(--dim);cursor:pointer;z-index:6;transition:.12s}
+#btnPanel{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));width:34px;height:34px;display:grid;place-items:center;background:#161b24e6;border:1px solid var(--line);border-radius:2px;color:var(--dim);cursor:pointer;z-index:6;transition:.12s}
 #btnPanel:hover{color:var(--amber);border-color:var(--amber)}
 #btnPanel svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-#topright{position:absolute;top:12px;right:12px;display:flex;gap:4px;z-index:3}
+#topright{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));display:flex;gap:4px;z-index:3}
 #topright button{width:34px;height:34px;display:grid;place-items:center;background:#161b24e6;border:1px solid var(--line);border-radius:2px;color:var(--dim);cursor:pointer;transition:.12s}
 #topright button:hover{color:var(--chalk);border-color:var(--faint)}
 #topright button.on{color:var(--amber);border-color:var(--amber);background:#2b2415}
 #topright svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-#status{position:absolute;left:12px;bottom:11px;display:flex;gap:14px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--faint);z-index:3;pointer-events:none;font-variant-numeric:tabular-nums}
+#status{position:absolute;left:calc(12px + env(safe-area-inset-left,0px));bottom:calc(11px + env(safe-area-inset-bottom,0px));display:flex;gap:14px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--faint);z-index:3;pointer-events:none;font-variant-numeric:tabular-nums}
 #status b{color:var(--dim);font-weight:500}
 #status .k{color:#4a5266}
-#hint{position:absolute;right:12px;bottom:11px;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:#4a5266;z-index:3;pointer-events:none}
+#hint{position:absolute;right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(11px + env(safe-area-inset-bottom,0px));font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:#4a5266;z-index:3;pointer-events:none}
 
 #flash{position:absolute;inset:0;pointer-events:none;z-index:2;background:#fff1d2;opacity:0;mix-blend-mode:screen}
-#safeflag{position:absolute;top:12px;left:56px;display:none;align-items:center;gap:6px;padding:5px 9px;background:#152322e6;border:1px solid #2c4a47;border-radius:2px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);z-index:3}
+#safeflag{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:calc(56px + env(safe-area-inset-left,0px));display:none;align-items:center;gap:6px;padding:5px 9px;background:#152322e6;border:1px solid #2c4a47;border-radius:2px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);z-index:3}
 #safeflag.on{display:flex}
 #safeflag::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--teal)}
 
 @media (max-width:900px){
   #app,#app.tucked{grid-template-columns:1fr}
-  #panel{position:absolute;left:0;top:0;bottom:0;width:280px;max-width:82vw;border-right:1px solid var(--line);
+  #panel{position:absolute;left:0;top:0;bottom:0;width:280px;max-width:82vw;padding-left:env(safe-area-inset-left,0px);border-right:1px solid var(--line);
          box-shadow:14px 0 34px rgba(0,0,0,.55)}
   #stage{grid-column:1;grid-row:1}
-  #tools{top:auto;bottom:10px;flex-wrap:wrap;justify-content:center;max-width:94%}
+  #tools{top:auto;bottom:calc(10px + env(safe-area-inset-bottom,0px));flex-wrap:wrap;justify-content:center;max-width:94%}
   #status,#hint{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -261,7 +274,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:2px solid var(
    STICK TEST CHAMBER &mdash; position based dynamics sandbox
    ============================================================ */
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const cv  = document.getElementById('game');
 const ctx = cv.getContext('2d');
 const decal = document.createElement('canvas');
@@ -1861,7 +1874,14 @@ function mpos(e){
   return {x:(e.clientX-r.left), y:(e.clientY-r.top)};
 }
 cv.addEventListener('contextmenu', e=>e.preventDefault());
+['gesturestart','gesturechange','gestureend'].forEach(t=>
+  document.addEventListener(t, e=>e.preventDefault(), {passive:false}));
+document.addEventListener('dblclick', e=>e.preventDefault(), {passive:false});
+let activePointer = null;
 cv.addEventListener('pointerdown', e=>{
+  if(activePointer !== null) return;          /* a second finger must not hijack the stroke */
+  activePointer = e.pointerId;
+  if(e.pointerType !== 'mouse' && e.cancelable) e.preventDefault();
   const m=mpos(e); mouse.x=m.x; mouse.y=m.y; mouse.px=m.x; mouse.py=m.y;
   mouse.down=true; mouse.btn=e.button; mouse.inside=true;
   try{ cv.setPointerCapture(e.pointerId); }catch(err){}
@@ -1869,6 +1889,7 @@ cv.addEventListener('pointerdown', e=>{
   toolDown();
 });
 cv.addEventListener('pointermove', e=>{
+  if(activePointer !== null && e.pointerId !== activePointer) return;
   const m=mpos(e); mouse.px=mouse.x; mouse.py=mouse.y; mouse.x=m.x; mouse.y=m.y; mouse.inside=true;
   if(held && TOOL==='grab' && S.gore && held.tag==='flesh'){
     const d=Math.hypot(mouse.x-held.x, mouse.y-held.y);
@@ -1879,7 +1900,10 @@ cv.addEventListener('pointermove', e=>{
   }
 });
 function release(){ if(held){ held.grabbed=false; held=null; } }
-function endStroke(){ mouse.down=false; release(); aim=null; }
+function endStroke(e){
+  if(e && e.pointerId !== undefined && activePointer !== null && e.pointerId !== activePointer) return;
+  activePointer = null; mouse.down=false; release(); aim=null;
+}
 cv.addEventListener('pointerup', endStroke);
 cv.addEventListener('pointercancel', endStroke);
 window.addEventListener('pointerup', endStroke);
@@ -2170,6 +2194,12 @@ setTool('spawn');
 selectItem('ball');
 syncSwitches();
 if(window.innerWidth < 900) appEl.classList.add('tucked');
+/* offline support when served from a real origin; harmless where it is unavailable */
+if('serviceWorker' in navigator && location.protocol === 'https:'){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
 requestAnimationFrame(frameLoop);
 })();
 </script>

@@ -1,6 +1,6 @@
 # Stick Test Chamber
 
-`v1.2.0`
+`v1.3.0`
 
 A ragdoll physics sandbox that runs entirely in the browser — no build step, no
 dependencies, one self-contained HTML file.
@@ -36,6 +36,17 @@ debris or stains.
 | `V` | Clear the whole room |
 | `X` | Heal everyone |
 | `Q` | Show / hide the item list |
+
+## Install it on a phone or tablet
+
+It is a full PWA — installable, and it keeps working with no connection.
+
+**iPad / iPhone:** open the link in **Safari** (not Chrome — only Safari can install
+on iOS), tap the **Share** button, then **Add to Home Screen**. It launches
+fullscreen with no browser chrome.
+
+**Android / desktop Chrome:** use the install icon in the address bar, or
+*Menu → Install app*.
 
 Sound is off by default — turn it on in the **Settings** tab, where there is also
 a volume slider. Browsers only allow audio to start after you interact with the
